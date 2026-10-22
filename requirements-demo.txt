@@ -1,0 +1,4 @@
+# Versions used to generate and check the fixture in the authoring environment.
+PyMuPDF==1.26.5
+Pillow==11.3.0
+# Optional scanned-page OCR: install the system tesseract executable.

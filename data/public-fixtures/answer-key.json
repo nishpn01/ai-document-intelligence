@@ -1,0 +1,8 @@
+{
+  "questions": [
+    {"id":"alpha-lot","question":"What lot number is listed on certificate CERT-FIC-101?","expected_page":1,"expected_answer":{"status":"answered","contains":["LOT-FIC-ALPHA"]}},
+    {"id":"bravo-expiration","question":"What is the expiration date on certificate CERT-FIC-202?","expected_page":2,"expected_answer":{"status":"answered","contains":["2032-09-30"]}},
+    {"id":"ambiguous-lot","question":"What is the lot number?","expected_page":1,"expected_answer":{"status":"clarification-required","contains":["CERT-FIC-101","CERT-FIC-202"]}},
+    {"id":"scanned-record","question":"What is the record ID on the scanned inspection page?","expected_page":3,"expected_answer":{"status":"answered","contains":["REC-FIC-303"]},"requires_ocr":true}
+  ]
+}

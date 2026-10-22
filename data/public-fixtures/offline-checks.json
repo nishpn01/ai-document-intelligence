@@ -1,0 +1,66 @@
+{
+  "run_type": "deterministic lexical demo; not original embedding/LLM evaluation",
+  "pdf": "synthetic-quality-documents.pdf",
+  "page_count": 3,
+  "extraction": [
+    {
+      "page": 1,
+      "method": "pdf-text",
+      "characters": 202
+    },
+    {
+      "page": 2,
+      "method": "pdf-text",
+      "characters": 202
+    },
+    {
+      "page": 3,
+      "method": "ocr-unavailable",
+      "characters": 0
+    }
+  ],
+  "ocr_available": false,
+  "checks": [
+    {
+      "id": "alpha-lot",
+      "passed": true,
+      "expected_page": 1,
+      "status": "answered",
+      "pages": [
+        1
+      ],
+      "answer": "Lot number: LOT-FIC-ALPHA"
+    },
+    {
+      "id": "bravo-expiration",
+      "passed": true,
+      "expected_page": 2,
+      "status": "answered",
+      "pages": [
+        2
+      ],
+      "answer": "Expiration date: 2032-09-30"
+    },
+    {
+      "id": "ambiguous-lot",
+      "passed": true,
+      "expected_page": 1,
+      "status": "clarification-required",
+      "pages": [
+        1,
+        2
+      ],
+      "answer": "Which certificate do you mean: CERT-FIC-101 or CERT-FIC-202?"
+    },
+    {
+      "id": "scanned-record",
+      "passed": "skipped",
+      "expected_page": 3,
+      "status": "skipped-ocr-unavailable",
+      "pages": [],
+      "answer": "OCR check skipped: tesseract is unavailable."
+    }
+  ],
+  "passed": true,
+  "elapsed_seconds": 0.006
+}

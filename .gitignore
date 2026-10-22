@@ -1,0 +1,14 @@
+.DS_Store
+.claude/
+.venv/
+.env
+.env.*
+!.env.example
+.ipynb_checkpoints/
+__pycache__/
+*.pyc
+*.gguf
+data/raw/
+notes/
+presentations/
+outputs/
