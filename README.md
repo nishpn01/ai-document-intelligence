@@ -1,192 +1,107 @@
 # AI Document Intelligence
 
-This is the public-facing edition of a document-AI project developed during my Pfizer externship with Extern. I ran OCR and embedding comparisons, evaluated document question answering against a manually checked answer key, and documented the failures and tradeoffs, with AI assistance for code and documentation.
+AI Document Intelligence is the public edition of my Pfizer externship work: a set of document AI experiments covering OCR comparison, embedding and retrieval evaluation, and document question answering. I checked the historical pipeline against five hand-checked questions over a 10-page, 28-chunk test set, then used answer-key validation and error analysis to separate retrieval failures from ground-truth errors. The central question is practical: can the system retrieve grounded answers from mixed PDF documents, and where does it fail?
 
-The project used guided learning resources and starter material. This edition preserves the analysis and sanitized notebook code, excludes the original supplied documents and report/deck files, and adds fictional sample documents for a public demonstration. It is a learning and evaluation project, not a production Pfizer system or a statement of employment at Pfizer.
+**Start here:** [final pipeline evaluation](docs/final-pipeline-evaluation.md), [OCR comparison](docs/ocr-engine-comparison.md), and the [public fixture run](docs/public-fixture-run.md).
 
-**Start here:** [Evaluation findings](docs/final-pipeline-evaluation.md), [OCR comparison](docs/ocr-engine-comparison.md), and [public demo instructions](#running-it).
+## What this demonstrates
 
-## Project and release dates
+| Concept | How it is implemented or evaluated | Where to look |
+| --- | --- | --- |
+| OCR comparison | Pages with usable digital text are extracted directly; near-empty pages fall back to preprocessing and OCR. Tesseract, PaddleOCR, and EasyOCR are compared. | [`docs/ocr-engine-comparison.md`](docs/ocr-engine-comparison.md), [`notebooks/06-layout-ocr-engine-comparison.ipynb`](notebooks/06-layout-ocr-engine-comparison.ipynb) |
+| Embedding and retrieval evaluation | The historical pipeline chunks text, embeds it, retrieves top-four context from a LlamaIndex in-memory index, and compares a baseline with a cross-encoder reranking configuration. | [`docs/final-pipeline-evaluation.md`](docs/final-pipeline-evaluation.md), [`docs/embedding-model-comparison.md`](docs/embedding-model-comparison.md), [`docs/rag-retrieval-configuration-comparison.md`](docs/rag-retrieval-configuration-comparison.md) |
+| Document question answering | A source-grounded prompt asks for citations and abstention on weak context while the retrieved passages remain separately measurable. | [`docs/final-pipeline-evaluation.md`](docs/final-pipeline-evaluation.md), notebooks 08-20 |
+| Evaluation and retrieval metrics | Answer-key validation reports Exact Match, Retrieval Recall@4, MRR, Precision@4, retrieval time, and full-query latency. | [`docs/final-pipeline-evaluation.md`](docs/final-pipeline-evaluation.md) |
+| Error analysis | The repository preserves wrong-document retrieval, reranker context loss, answer truncation, and identifier errors as findings. | [`docs/`](docs/) |
+| Fictional public demo | A fictional PDF fixture, checked answer key, offline reference demo, and tests run without original documents or API credentials. | [`data/public-fixtures/`](data/public-fixtures/), [`scripts/offline_demo.py`](scripts/offline_demo.py) |
 
-- Original learning and project work: June through August 2026, with project work continuing through August 31, as recorded in the original project documentation.
-- Original repository history: initial commit July 29; notebook and report import August 20; evaluation and documentation updates September 1–2, 2026.
-- This separate public edition: October 21, 2026. Its commits record preparation and publication of this edition. They are not presented as the original experiment dates, and the private source history is not copied into this repository.
+## The journey from PDF to checked answer
 
-## Contents
+1. I compared direct text extraction with OCR because one document set can include both digital and scanned pages.
+2. I tested OCR for text coverage, layout grouping, confidence signals, and setup cost; one engine-reported confidence number is not treated as general accuracy.
+3. The historical end-to-end pipeline used PyPDF2 extraction, Tesseract fallback, 512-character chunks with 100-character overlap, `BAAI/bge-small-en-v1.5` embeddings, a LlamaIndex in-memory index, `similarity_top_k=4`, and Mistral-7B-Instruct through `llama-cpp-python`.
+4. I checked five answers against a source-reviewed answer key, then investigated the failures rather than treating the first score as final.
 
-- [What this found](#what-this-found)
-- [How it works](#how-it-works)
-- [Studies](#studies)
-- [Repository guide](#repository-guide)
-  - [Data sources](#data-sources)
-- [Limitations](#limitations)
-- [What's next](#whats-next)
-- [Running it](#running-it)
-- [Stack](#stack)
+### 1. OCR and text preparation
 
-## What this found
+```mermaid
+flowchart TB
+  P[PDF pages] --> T{Usable text layer?}
+  T -->|Yes| X[Extract page text]
+  T -->|Near-empty| I[Preprocess image]
+  I --> O[OCR fallback]
+  X --> C[Chunk text]
+  O --> C
+```
 
-**Final pipeline evaluation - 5 questions, 10 pages, 28 chunks:**
+On one scanned certificate page, Tesseract returned 220 words, PaddleOCR returned 36 regions, and EasyOCR returned 47 regions. PaddleOCR had the highest engine-reported average confidence (98.41%) and preserved a sampled field/value grouping; Tesseract had 93.90% reported confidence and more complete text. Those counts use different units, so the comparison is scoped to this document rather than a general OCR ranking.
 
-| Metric | Result |
-| --- | --- |
-| Exact Match | 100% (5-question test set) |
-| Retrieval Recall@4 | 100% (same 5-question, 28-chunk test set) |
+### 2. Retrieval and answer generation
+
+```mermaid
+flowchart TB
+  C[512-character chunks with 100-character overlap] --> E[BGE embeddings]
+  E --> I[LlamaIndex in-memory index]
+  I --> R[Retrieve top 4 chunks]
+  R --> M[Mistral answer prompt]
+  M --> A[Citation or abstention response]
+```
+
+The pipeline includes a source-grounded prompt, but retrieval and generation remain separate things to evaluate. A generic lot-number question returned a real value from the wrong certificate; document type alone could not disambiguate two certificates of the same type. A future version needs a stable document identifier, page-range selection, or a clarification question.
+
+### 3. Evaluation loop
+
+```mermaid
+flowchart TB
+  Q[Five hand-checked questions] --> R[Run retrieval and answer pipeline]
+  R --> S[Score answers and retrieved chunks]
+  S --> F[Inspect failures against source]
+  F --> K[Correct answer key or record system failure]
+  K --> D[Document result and next experiment]
+```
+
+## Results
+
+| Historical evaluation: 5 questions, 10 pages, 28 chunks | Result |
+| --- | ---: |
+| Exact Match | 100% |
+| Retrieval Recall@4 | 100% |
 | MRR | 0.87 |
 | Precision@4 | 45% |
-| Avg latency | ~292 s / query |
-| Retrieval time | 88 ms |
+| Retrieval time | about 88 ms |
+| Full-query average | about 292 seconds |
 
-Full writeup, including the answer-key correction and the retrieval failure below:
-[`docs/final-pipeline-evaluation.md`](docs/final-pipeline-evaluation.md).
+Two apparent misses were answer-key errors. After checking the source, the same run changed from 80% to 100% Exact Match and from 60% to 100% Recall@4. Precision@4 remained 45%: the correct passage was retrieved for every question, but irrelevant context still appeared too often. The 292-second average came from local Mistral inference and is not suitable for an interactive chat experience.
 
-**Evaluation: the first run measured the test set, not the model.** The first
-evaluation run scored 80% Exact Match / 60% Recall. Both apparent misses traced to errors in
-the hand-built ground truth, not the pipeline - a wrong page label and an ambiguous
-lot-number question. After correcting the answer key against the source PDF, the same
-pipeline scored 100% / 100% on that same 5-question set. Bad ground truth produces misleading
-metrics, and the fix was in the test, not the model.
-
-**A correct answer from the wrong document.** The evaluation PDF contains two certificates of the same type. A generic question about a lot number returned a real value from the wrong certificate. A document-type filter alone cannot distinguish two certificates of the same type. A proposed next change is to select a specific document or page range, or ask which certificate the user means. This is not claimed as an implemented fix.
-
-**OCR showed a grouping-versus-coverage tradeoff on one page.**
-The report records engine-reported average confidence of 98.41% for PaddleOCR and 93.90% for Tesseract. These are not comparable accuracy scores. Tesseract returned 220 words and PaddleOCR 36 regions, which are different output units. All three tested engines captured the core fields; grouping, table handling, text coverage, and setup effort were the more useful distinctions. The report recommends combining them: Tesseract for
-dense body text, PaddleOCR for structured fields and tables. See
-[`docs/ocr-engine-comparison.md`](docs/ocr-engine-comparison.md).
-
-**The most advanced retrieval configuration was the worst one.** Comparing three retrieval
-setups on the same query, enabling a cross-encoder reranker narrowed five retrieved chunks to
-three and dropped three of the four QC test methods from the final answer. The plain,
-unfiltered baseline configuration gave the complete answer. See
-[`docs/rag-retrieval-configuration-comparison.md`](docs/rag-retrieval-configuration-comparison.md).
-
-## How it works
-
-- **OCR fallback, not OCR-only.** Pages are read from the PDF's digital text layer first; a
-  near-empty page is treated as scanned and sent through OCR instead. Pharmaceutical
-  documents mix both kinds of page in a single file, so a single strategy doesn't cover the
-  corpus.
-- **Bilateral filter + adaptive threshold before OCR**, not raw scans. Preprocessing improved
-  what OCR had to work with.
-- **Detailed classification-prompt engineering**, because a vaguer prompt classified every
-  document as "Other." Naming the document types explicitly fixed the failure mode.
-- **Metadata-filtered retrieval** (`doc_type`, `page_start`/`page_end`, `source_file`) was
-  explored as a way to narrow retrieval. Two certificates of the same type still require a stable document identifier, page range, or clarification.
-- **Prompt guardrails that force citation and allow abstention on weak context**, after
-  observing that answer quality depended more on prompt discipline than on retrieval or
-  metadata.
-- **Hosted Gemini compared with Mistral-7B in the notebook runtime.** Gemini was faster and hit its
-  free-tier rate limit repeatedly (429 errors); Mistral was slower and ran inference in the notebook runtime rather than sending prompts to the hosted Gemini API. Google Colab is still a cloud-hosted environment; this is not a wholly on-device or compliance claim. See
-  [`docs/gemini-vs-mistral.md`](docs/gemini-vs-mistral.md) for the comparison that backs this
-  choice, and the [final evaluation](docs/final-pipeline-evaluation.md) for what the slower
-  model costs in practice (~292 s/query).
-
-**The final evaluation uses a different embedding model from the comparison's top-rated model.** The written
-comparison scored MiniLM best on every measured criterion, but the capstone and final evaluation notebooks uses `BAAI/bge-small-en-v1.5`. The reason wasn't recorded
-at the time. See [`docs/embedding-model-comparison.md`](docs/embedding-model-comparison.md).
-
-## Studies
-
-The readable studies in `docs/` summarize the original experiments. Supplied PDFs and report/deck files are not included in this public edition. Notebook links identify the relevant historical experiment or its sanitized public adaptation. Historical results are not outputs from the new fictional sample documents.
-
-| Study | What it found |
-| --- | --- |
-| [Final pipeline evaluation](docs/final-pipeline-evaluation.md) | 100% Exact Match / 100% Recall@4 on 5 questions; the answer-key story; wrong-document retrieval |
-| [OCR engine comparison](docs/ocr-engine-comparison.md) | PaddleOCR most confident, Tesseract most complete; recommendation is to combine them |
-| [Embedding model comparison](docs/embedding-model-comparison.md) | MiniLM fastest and most consistent; no single model won every query |
-| [Gemini vs Mistral](docs/gemini-vs-mistral.md) | Both stayed grounded; the gap was speed, not accuracy |
-| [RAG retrieval configuration comparison](docs/rag-retrieval-configuration-comparison.md) | Simpler retrieval beat the reranked configuration |
-| [RAG pipeline design](docs/rag-pipeline-design.md) | Early architecture verification - hybrid retrieval, page-level chunking |
-| [Full RAG chatbot capstone](docs/rag-chatbot-capstone.md) | The working Gradio app; three documented defects (latency, truncation, over-generation) |
-| [PDF structure extraction](docs/pdf-structure-extraction.md) | PyMuPDF word-level extraction works; table structure does not survive automatically |
-| [Query routing within contracts](docs/query-routing-within-contracts.md) | RAG located the right section but garbled a generated identifier |
-| [Page-level document classification](docs/page-level-document-classification.md) | Local Mistral-7B split document boundaries correctly on 9 of 10 pages |
-
-## Repository guide
-
-| Path | Contents |
-| --- | --- |
-| `docs/` | Experiment findings, data provenance, and public-demo verification |
-| `notebooks/` | Numbered experiments; 19 and 20 are adapted for public sample inputs |
-| `data/public-fixtures/` | Fictional PDF inputs, checked answer key, and offline check records |
-| `scripts/` | Fixture generation and a lightweight offline reference demonstration |
-| `tests/` | Checks for the permitted public fixture and reference behavior |
-
-### Data sources
-
-The original learning project used supplied pharmaceutical documents. Those inputs, original PDF reports, presentations, extracted source text, and their Git history are not distributed here. The public fixture contains clearly fictional examples. See [data provenance](docs/data-sources.md) for the boundary between historical results and the public demonstration.
-
-Earlier notebooks are historical experiments and may reference unavailable original inputs. Their saved outputs have been removed where necessary. Their presence is not a claim that all twenty notebooks run unchanged against the new fixture.
-
-Notebook 07 is omitted because its source embeds document-specific extracted values. Its original remains private.
-
-### Notebooks in sequence
-
-| # | Notebook | Stage |
-| --- | --- | --- |
-| 01–03 | text/tabular/image cleaning | Cleaning |
-| 04–06 | multi-page PDF extraction, scanned-PDF analysis and OCR engine comparison | Extraction & OCR |
-| 08–11 | chunking, simple Gemini chatbot, embedding comparisons (with and without reranking) | Embeddings & chunking |
-| 12–13 | advanced PDF retrieval, open-source model retrieval | Retrieval |
-| 14–16 | routing across PDFs, routing within a contract, page-level boundary detection | Routing |
-| 17–19 | Gradio basics, a document Q&A UI, the full RAG chatbot capstone | Application |
-| 20 | final pipeline evaluation | Evaluation |
-
-## Limitations
-
-- **~292 s/query is not viable for interactive use.** That's the average latency of the local
-  Mistral-7B-Instruct model (Q4_K_M GGUF) on a free-tier GPU. A synchronous chat interface at
-  this speed does not work; the capstone chatbot observed a single query take ~229 seconds in
-  an earlier run.
-- **Retrieval recall and retrieval precision disagree.** Recall@4 is 100% on the 5-question
-  evaluation set, but Precision@4 is 45% - retrieval finds the right passage every time, but
-  brings roughly half irrelevant context along with it. Not addressed in the current build.
-- **Every test set here is small.** The formal evaluation is 5 questions
-  over one PDF containing multiple document types, with 10 pages and 28 chunks. The OCR, embedding, retrieval-configuration, and
-  Gemini-vs-Mistral comparisons are each one document and one to three queries. None of this
-  has been run against a larger or more varied corpus.
-- **Answer generation truncates and over-generates.** A multi-part question was cut off
-  mid-sentence because `max_new_tokens` was set too low; a separate answer continued past the
-  question into an unasked, self-generated follow-up Q&A.
-- **Page-level document-boundary classification missed 1 of 10 pages** in the one file it was
-  tested on - a smaller-model boundary-reasoning weakness that a hosted model (Gemini) did not
-  share on that same page.
-- **RAG can garble a generated identifier even when retrieval is correct.** On a contract-PDF
-  routing test, the retrieved section was right but the model wrote the wrong ECN number.
-  Extractive answers, not generated ones, are the safer choice for exact reference numbers.
-
-## What's next
-
-- Re-run the embedding comparison against the final pipeline's own documents and chunking
-  strategy, to establish which model - MiniLM or BGE - is actually better for this corpus.
-- Disambiguate the intended document or page range before answering a generic lot-number question. A `doc_type` filter alone does not separate two certificates of the same type.
-- Address the Precision@4 gap - the retrieval configuration comparison found that the current
-  fixes (thresholding, reranking) don't do it, so a different approach is needed.
-- Move off synchronous local inference, or add a persistent vector index, before testing
-  against a corpus larger than a handful of documents.
-
-## Running it
-
-Use the fictional input and the lightweight offline check first. It is a reference demonstration of extraction, source selection, and extractive answering, not a rerun of the historical embedding/Mistral evaluation.
+## Run the public demonstration
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements-demo.txt
+python3 scripts/create_public_fixture.py
+python3 -m unittest discover -s tests -v
+python3 scripts/offline_demo.py
 ```
 
-The exact fixture-generation and check commands are listed in [the fixture guide](data/public-fixtures/README.md) and [the public run record](docs/public-fixture-run.md). The offline demonstration makes no hosted AI calls.
+The public demo is a deterministic lexical reference implementation over fictional certificates. It checks source selection, extractive answers, and a clarification request for an ambiguous lot-number question; it does not rerun the historical embedding or Mistral evaluation.
 
-For the original model-based workflow, open [notebook 19](notebooks/19-full-rag-chatbot-capstone.ipynb), followed by [notebook 20](notebooks/20-pipeline-evaluation.ipynb), using their public-fixture setup cells. They require their documented model/runtime dependencies and may require a GPU. The large-model notebooks have not been re-executed for this public release unless the run record explicitly says otherwise. Historical results remain labeled as historical.
+## Repository map
 
-Earlier Gemini experiments read credentials from Colab Secrets. No credentials are included. Supply only documents you are permitted to process.
+| Path | Purpose |
+| --- | --- |
+| [`docs/`](docs/) | Findings, provenance, comparisons, and error analysis |
+| [`notebooks/`](notebooks/) | Numbered historical experiments and public adaptations |
+| [`data/public-fixtures/`](data/public-fixtures/) | Public PDFs, checked questions, and recorded checks |
+| [`scripts/`](scripts/) | Fixture generator and offline demonstration |
+| [`tests/`](tests/) | Public-fixture checks |
 
-## Stack
+## Current status
 
-- **Retrieval** - LlamaIndex in-memory vector index; BM25/hybrid retrieval in the comparison experiments
-- **LLMs** - Mistral-7B-Instruct v0.2 (Q4_K_M GGUF, via `llama-cpp-python`) in the capstone and final evaluation; Gemini in the earlier notebooks
-- **Embeddings** - `BAAI/bge-small-en-v1.5` in the capstone and final evaluation;
-  `sentence-transformers/all-MiniLM-L6-v2` and `intfloat/e5-small-v2` in the comparison work
-- **OCR** - Tesseract, PaddleOCR, EasyOCR
-- **PDF** - PyMuPDF (`fitz`), PyPDF2, `pdf2image` + poppler
-- **UI** - Gradio
+- Original supplied documents and the historical answer key are not in this public edition.
+- The final model pipeline was not rerun for the public release. Notebooks 19 and 20 retain their documented runtime and GPU requirements.
+- The project is an evaluation of document-AI approaches, not a production Pfizer system.
+
+## Ownership
+
+I ran the evaluation, comparisons, and error analysis and directed the implementation.
